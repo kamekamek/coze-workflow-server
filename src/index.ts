@@ -149,32 +149,43 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         app_id?: string;
       };
 
-      if (!workflow_id || !parameters) {
-        throw new McpError(ErrorCode.InvalidParams, "Workflow ID and parameters are required");
+      if (!workflow_id) {
+        throw new McpError(ErrorCode.InvalidParams, "Workflow ID is required");
       }
 
+      // パラメータが未定義の場合は空オブジェクトを使用
+      const requestBody: Record<string, unknown> = {
+        workflow_id,
+        parameters: parameters || {}
+      };
+
+      // オプションパラメータの追加
+      if (bot_id) requestBody.bot_id = bot_id;
+      if (app_id) requestBody.app_id = app_id;
+
       try {
-        const response = await axios.post('https://api.coze.com/v1/workflow/run', {
-          workflow_id,
-          parameters,
-          bot_id,
-          app_id
-        }, {
+        const response = await axios.post('https://api.coze.com/v1/workflow/run', requestBody, {
           headers: {
             'Authorization': `Bearer ${COZE_API_TOKEN}`,
             'Content-Type': 'application/json'
           }
         });
 
+        // デバッグ情報を含むレスポンス
         return {
           content: [{
             type: "text",
-            text: JSON.stringify(response.data, null, 2)
+            text: `Workflow execution result:\n${JSON.stringify(response.data, null, 2)}\n\nDebug URL: ${response.data.debug_url || 'Not available'}`
           }]
         };
       } catch (error) {
         if (axios.isAxiosError(error)) {
-          throw new McpError(ErrorCode.InternalError, `Coze API error: ${error.response?.data.message || error.message}`);
+          const errorMessage = error.response?.data?.msg || error.message;
+          const debugUrl = error.response?.data?.debug_url;
+          throw new McpError(
+            ErrorCode.InternalError, 
+            `Coze API error: ${errorMessage}${debugUrl ? `\nDebug URL: ${debugUrl}` : ''}`
+          );
         }
         throw error;
       }
